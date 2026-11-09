@@ -10,8 +10,9 @@ Drag the handle to move between the two. Arrow keys work too.
 
 ## View it
 
-Open `index.html` in a browser, or see the live version on GitHub Pages:
-`https://<your-username>.github.io/<repo-name>/`
+**Live map:** https://hasanemirbicen-dotcom.github.io/manhattan_island_urban_rural1783/
+
+You can also download `index.html` and open it in a browser.
 
 It is a single HTML file with no build step. It needs an internet connection, because the map tiles load from the sources below.
 
