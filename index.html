@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Manhattan Then and Now</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IBM+Plex+Sans+Condensed:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: full-bleed map, a parchment title card top-left, a split handle down the middle. Left = old map, right = satellite today. */
+:root{
+  --ink:#1f1a14;
+  --paper:#efe6d2;
+  --paper-2:#e2d5b8;
+  --sepia:#7a5a32;
+  --steel:#cfe3ec;
+  --rule:#b9a57f;
+  --f-display:"IM Fell English", Georgia, "Times New Roman", serif;
+  --f-body:"IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif;
+  --f-mono:"IBM Plex Mono", Consolas, monospace;
+}
+html,body{height:100%;margin:0;overflow:hidden;background:#1b1a17;color:var(--ink);font-family:var(--f-body)}
+#map{position:absolute;inset:0;background:#cbbf9f}
+.leaflet-container{font-family:var(--f-body)}
+
+/* title card */
+.card{
+  position:absolute;z-index:800;top:max(16px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left));
+  width:min(340px,calc(100vw - 32px));box-sizing:border-box;
+  background:var(--paper);border:1px solid var(--rule);
+  box-shadow:0 1px 0 #fff8 inset,0 8px 28px #0006;
+  padding:18px 20px 16px;
+}
+.card .eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sepia)}
+.card h1{font-family:var(--f-display);font-weight:400;font-size:36px;line-height:1;margin:6px 0 4px;text-wrap:balance}
+.card h1 em{font-style:italic;color:var(--sepia)}
+.card p{font-size:14px;line-height:1.4;margin:8px 0 12px}
+.seg{display:flex;gap:0;border:1px solid var(--ink)}
+.seg button{flex:1;font:600 13px/1 var(--f-body);letter-spacing:.04em;padding:9px 6px;background:transparent;color:var(--ink);border:0;cursor:pointer}
+.seg button+button{border-left:1px solid var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.seg button:focus-visible{outline:2px solid var(--sepia);outline-offset:2px}
+.src{font-size:11.5px;line-height:1.4;color:#5a4a33;margin-top:12px;border-top:1px solid var(--rule);padding-top:10px}
+.src a{color:inherit}
+.card .toggle{display:none}
+
+/* era labels */
+.era{position:absolute;z-index:700;bottom:max(28px,calc(env(safe-area-inset-bottom) + 20px));font-family:var(--f-mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;padding:7px 10px;pointer-events:none;white-space:nowrap}
+.era b{display:block;font-family:var(--f-display);font-weight:400;font-size:30px;letter-spacing:0;text-transform:none;line-height:1}
+.era.then{background:var(--paper);color:var(--ink);border:1px solid var(--rule)}
+.era.now{background:#0f1a20e6;color:var(--steel);border:1px solid #3c5562;text-align:right}
+
+/* swipe handle */
+#divider{position:absolute;z-index:750;top:0;bottom:0;width:0;border-left:2px solid var(--paper);box-shadow:0 0 0 1px #0005;pointer-events:none}
+#knob{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;background:var(--paper);border:2px solid var(--ink);display:grid;place-items:center;pointer-events:auto;cursor:ew-resize;touch-action:none;font:500 15px var(--f-mono);color:var(--ink);box-shadow:0 4px 14px #0007}
+#knob:focus-visible{outline:3px solid var(--sepia);outline-offset:3px}
+
+.leaflet-control-attribution{font-size:10px;background:#efe6d2cc!important}
+@media (max-width:560px){
+  .card{padding:14px 16px 12px}
+  .card h1{font-size:28px}
+  .card p{display:none}
+  .card:not(.open) .src{display:none}
+  .card .toggle{display:block;margin-top:8px;font:12px var(--f-body);background:none;border:0;padding:0;color:var(--sepia);text-decoration:underline;cursor:pointer}
+  .era b{font-size:22px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="map" aria-label="Manhattan comparison map"></div>
+
+<div id="divider"><div id="knob" tabindex="0" role="slider" aria-label="Swipe between historic map and today" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">⇆</div></div>
+
+<div class="era then" id="eraThen"><span id="eraThenSub">Farms &amp; estates</span><b id="eraThenYear">1783</b></div>
+<div class="era now" id="eraNow"><span>Satellite</span><b>Today</b></div>
+
+<section class="card" id="card">
+  <div class="eyebrow">30DayMapChallenge · Day 9</div>
+  <h1>Manhattan, <em>then</em> &amp; now</h1>
+  <p id="blurb">Drag the handle. Left: the island at the close of the Revolution, when everything north of today's Chambers Street was farmland, woods and country estates. Right: the same ground today.</p>
+  <div class="src" id="src"></div>
+  <button type="button" class="toggle" id="srcToggle">Sources</button>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const ERAS = {
+  "1783": {
+    id: "71ffdd4e9d16e3a2",
+    year: "1783", sub: "Farms & estates",
+    blurb: "Drag the handle. Left: the island at the close of the Revolution, when everything north of today's Chambers Street was farmland, woods and country estates. Right: the same ground today.",
+    src: '<b>1783</b>: “1783, Manhattan Island at the close of the Revolution”. American Geographical Society Library, UW–Milwaukee. Georeferenced via <a href="https://allmaps.org" target="_blank" rel="noopener">Allmaps</a>.'
+  }
+};
+const TODAY_SRC = '<b>Today</b>: Esri World Imagery (Esri, Maxar, Earthstar Geographics).';
+
+const ISLAND = L.latLngBounds([[40.700, -74.02], [40.878, -73.905]]);
+const map = L.map("map", { zoomControl: false, minZoom: 11, maxZoom: 17, zoomSnap: 0.25 });
+// keep the island clear of the title card on wide screens
+function islandView() {
+  const wide = window.innerWidth > 1100;
+  const pad = wide ? document.getElementById("card").offsetWidth + 32 : 0;
+  const size = map.getSize();
+  const z = map.getBoundsZoom(ISLAND, false, L.point(pad, 0));
+  if (!isFinite(z) || size.x <= pad || size.y === 0) return [ISLAND.getCenter(), 12];
+  const c = map.project(ISLAND.getCenter(), z).subtract([pad / 2, 0]);
+  return [map.unproject(c, z), z];
+}
+map.setView(ISLAND.getCenter(), 12, { animate: false });
+map.setView(...islandView(), { animate: false });
+L.control.zoom({ position: "topright" }).addTo(map);
+
+// Today (whole map)
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+  maxZoom: 19, attribution: "Imagery © Esri, Maxar, Earthstar Geographics"
+}).addTo(map);
+
+// Historic pane, clipped to the left of the handle
+map.createPane("then");
+const thenPane = map.getPane("then");
+thenPane.style.zIndex = 450;
+// paper wash under the old map so the left side reads as "then" even outside its sheet
+const wash = L.rectangle([[40.5, -74.3], [41.1, -73.6]], { pane: "then", stroke: false, fillColor: "#d9ccab", fillOpacity: 0.45, interactive: false }).addTo(map);
+let histLayer = null;
+
+function setEra(key, animate = true) {
+  const e = ERAS[key];
+  if (histLayer) map.removeLayer(histLayer);
+  histLayer = L.tileLayer(`https://allmaps.xyz/maps/${e.id}/{z}/{x}/{y}.png`, {
+    pane: "then", maxZoom: 19, attribution: "Historic map via Allmaps"
+  }).addTo(map);
+  document.getElementById("eraThenYear").textContent = e.year;
+  document.getElementById("eraThenSub").textContent = e.sub;
+  document.getElementById("blurb").textContent = e.blurb;
+  document.getElementById("src").innerHTML = e.src + "<br>" + TODAY_SRC;
+  if (animate) map.flyTo(...islandView(), { duration: 0.8 });
+}
+document.getElementById("srcToggle").onclick = () => document.getElementById("card").classList.toggle("open");
+
+// swipe
+let ratio = 0.5;
+const divider = document.getElementById("divider"), knob = document.getElementById("knob");
+const eraThen = document.getElementById("eraThen"), eraNow = document.getElementById("eraNow");
+function clip() {
+  const size = map.getSize();
+  const x = Math.round(size.x * ratio);
+  const nw = map.containerPointToLayerPoint([0, 0]);
+  const se = map.containerPointToLayerPoint(size);
+  thenPane.style.clip = `rect(${nw.y}px, ${nw.x + x}px, ${se.y}px, ${nw.x}px)`;
+  divider.style.left = x + "px";
+  eraThen.style.right = (size.x - x + 12) + "px"; eraThen.style.left = "auto";
+  eraNow.style.left = (x + 12) + "px";
+  eraThen.hidden = x < 130; eraNow.hidden = size.x - x < 130;
+  knob.setAttribute("aria-valuenow", Math.round(ratio * 100));
+}
+map.on("move zoom resize viewreset", clip);
+let dragging = false;
+knob.addEventListener("pointerdown", e => { dragging = true; knob.setPointerCapture(e.pointerId); map.dragging.disable(); });
+knob.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  const r = map.getContainer().getBoundingClientRect();
+  ratio = Math.min(0.98, Math.max(0.02, (e.clientX - r.left) / r.width)); clip();
+});
+const end = () => { dragging = false; map.dragging.enable(); };
+knob.addEventListener("pointerup", end); knob.addEventListener("pointercancel", end);
+knob.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft") ratio = Math.max(0.02, ratio - 0.05);
+  else if (e.key === "ArrowRight") ratio = Math.min(0.98, ratio + 0.05);
+  else return;
+  e.preventDefault(); clip();
+});
+
+setEra("1783", false);
+clip();
+</script>
+</body>
+</html>
